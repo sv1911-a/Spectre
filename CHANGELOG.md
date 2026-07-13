@@ -2,7 +2,7 @@
 
 All notable changes to SPECTRE will be documented here.
 
-## 0.1.0 - Unreleased
+## 0.1.3 - Unreleased
 
 Initial framework release.
 
