@@ -43,6 +43,8 @@ class FileAnalysisPlugin(BasePlugin):
             severity = Severity.MEDIUM
         if raw.get("entropy", 0) >= 7.2 and signatures and signatures[0].get("artifact_type") == "binary":
             severity = Severity.MEDIUM
+        if raw.get("potential_secrets") or raw.get("embedded_executables") or raw.get("suspicious_patterns"):
+            severity = Severity.MEDIUM
 
         evidence = [
             Evidence(source="file.path", value=raw.get("path")),
@@ -54,6 +56,14 @@ class FileAnalysisPlugin(BasePlugin):
         ]
         for signature in signatures:
             evidence.append(Evidence(source="file.signature", value=signature))
+        evidence.append(Evidence(source="file.iocs", value=raw.get("iocs", {})))
+        evidence.append(Evidence(source="file.language_hints", value=raw.get("language_hints", [])))
+        evidence.append(Evidence(source="file.embedded_archives", value=raw.get("embedded_archives", [])))
+        evidence.append(Evidence(source="file.embedded_executables", value=raw.get("embedded_executables", [])))
+        evidence.append(Evidence(source="file.potential_secrets", value=raw.get("potential_secrets", [])))
+        evidence.append(Evidence(source="file.suspicious_patterns", value=raw.get("suspicious_patterns", [])))
+        if raw.get("binary_info"):
+            evidence.append(Evidence(source="file.binary_info", value=raw.get("binary_info")))
         for string in strings[:40]:
             evidence.append(Evidence(source="file.string", value=string))
 
@@ -75,6 +85,12 @@ class FileAnalysisPlugin(BasePlugin):
                 metadata={
                     "primary_signature": signatures[0] if signatures else None,
                     "string_count": len(strings),
+                    "ioc_counts": {key: len(value) for key, value in raw.get("iocs", {}).items()},
+                    "embedded_archive_count": len(raw.get("embedded_archives", [])),
+                    "embedded_executable_count": len(raw.get("embedded_executables", [])),
+                    "secret_indicator_count": len(raw.get("potential_secrets", [])),
+                    "suspicious_pattern_count": len(raw.get("suspicious_patterns", [])),
+                    "binary_info": raw.get("binary_info", {}),
                     "external_tools_used": False,
                 },
             )

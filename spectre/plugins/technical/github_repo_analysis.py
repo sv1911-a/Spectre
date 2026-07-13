@@ -70,6 +70,10 @@ class GitHubRepoAnalysisPlugin(BasePlugin):
             Evidence(source="github.languages", value=raw.get("languages")),
             Evidence(source="github.topics", value=raw.get("topics")),
             Evidence(source="github.technology_hints", value=raw.get("technology_hints")),
+            Evidence(source="github.releases", value=raw.get("releases", [])),
+            Evidence(source="github.activity_summary", value=raw.get("activity_summary", {})),
+            Evidence(source="github.repository_health", value=raw.get("repository_health", {})),
+            Evidence(source="github.dependency_files", value=raw.get("dependency_files", [])),
             Evidence(source="github.tree_sample_count", value=raw.get("tree_sample_count")),
         ]
         for contributor in raw.get("contributors_sample", [])[:10]:

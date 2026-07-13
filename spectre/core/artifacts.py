@@ -31,6 +31,9 @@ class ArtifactType(str, Enum):
     USERNAME = "username"
     PHONE = "phone"
     CERTIFICATE = "certificate"
+    API_KEY = "api_key"
+    TOKEN = "token"
+    UUID = "uuid"
     FILE = "file"
     BINARY = "binary"
     IMAGE = "image"
@@ -71,6 +74,10 @@ _DOMAIN_RE = re.compile(r"\b(?:[a-zA-Z0-9-]{1,63}\.)+[a-zA-Z]{2,63}\b")
 _GITHUB_REPO_RE = re.compile(r"github\.com[:/]([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)")
 _HASH_RE = re.compile(r"\b(?:[A-Fa-f0-9]{32}|[A-Fa-f0-9]{40}|[A-Fa-f0-9]{56}|[A-Fa-f0-9]{64}|[A-Fa-f0-9]{96}|[A-Fa-f0-9]{128})\b")
 _JWT_RE = re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b")
+_UUID_RE = re.compile(r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}\b")
+_API_KEY_RE = re.compile(r"(?i)\b(?:api[_-]?key|client[_-]?secret|access[_-]?token|auth[_-]?token|secret)\b\s*[:=]\s*['\"]?([A-Za-z0-9_./+=-]{20,})")
+_TOKEN_RE = re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9_]{36,}|glpat-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_-]{35})\b")
+_CERT_RE = re.compile(r"-----BEGIN [A-Z ]*CERTIFICATE-----")
 _JS_ENDPOINT_RE = re.compile(r"[\"']((?:/[A-Za-z0-9_./{}:-]+){1,}(?:\?[A-Za-z0-9_=&{}.-]+)?)['\"]")
 _COORD_RE = re.compile(r"(?<!\d)([-+]?\d{1,2}\.\d{3,})\s*,\s*([-+]?\d{1,3}\.\d{3,})(?!\d)")
 _PHONE_RE = re.compile(r"(?<!\w)(?:\+?\d[\d .()\-]{7,}\d)(?!\w)")
@@ -91,6 +98,11 @@ def canonicalize_artifact(artifact_type: ArtifactType, value: str) -> str:
         value = value.rstrip(".,);]")
     if artifact_type == ArtifactType.HASH:
         value = value.lower()
+    if artifact_type in {ArtifactType.API_KEY, ArtifactType.TOKEN}:
+        if len(value) > 10:
+            value = f"{value[:4]}...{value[-4:]}"
+        else:
+            value = "<redacted>"
     if artifact_type == ArtifactType.COORDINATE:
         value = re.sub(r"\s+", "", value)
     return value
@@ -154,6 +166,14 @@ def extract_artifacts(
             pass
     for token in _JWT_RE.findall(text):
         add(ArtifactType.JWT, token, 0.86)
+    for value in _UUID_RE.findall(text):
+        add(ArtifactType.UUID, value, 0.8)
+    for value in _TOKEN_RE.findall(text):
+        add(ArtifactType.TOKEN, value, 0.82)
+    for value in _API_KEY_RE.findall(text):
+        add(ArtifactType.API_KEY, value, 0.72)
+    if _CERT_RE.search(text):
+        add(ArtifactType.CERTIFICATE, "PEM certificate block", 0.85)
     for endpoint in _JS_ENDPOINT_RE.findall(text):
         if len(endpoint) > 1 and not endpoint.startswith("//"):
             add(ArtifactType.JS_ENDPOINT, endpoint, 0.6)

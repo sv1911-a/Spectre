@@ -316,6 +316,13 @@ class GitHubAdapter(SourceAdapter):
             topics = topics_response.data.get("names", []) if isinstance(topics_response.data, dict) else []
         except Exception:
             topics = []
+        releases: list[dict[str, Any]] = []
+        try:
+            releases_response = self.get(f"/repos/{owner}/{repo}/releases", {"per_page": 5})
+            raw_releases = releases_response.data if isinstance(releases_response.data, list) else []
+            releases = [{"name": item.get("name") or item.get("tag_name"), "tag_name": item.get("tag_name"), "published_at": item.get("published_at"), "prerelease": item.get("prerelease")} for item in raw_releases]
+        except Exception:
+            releases = []
 
         repo_data = repo_response.data
         default_branch = repo_data.get("default_branch", "main")
@@ -350,6 +357,21 @@ class GitHubAdapter(SourceAdapter):
         except Exception as exc:  # noqa: BLE001
             tree_error = f"{type(exc).__name__}: {exc}"
 
+        dependency_files = interesting_project_files(tree_items)
+        activity_summary = {
+            "pushed_at": repo_data.get("pushed_at"),
+            "updated_at": repo_data.get("updated_at"),
+            "recent_commit_count_sampled": len(commits_response.data) if isinstance(commits_response.data, list) else 0,
+            "contributors_sampled": len(contributors_data),
+            "open_issues_count": repo_data.get("open_issues_count"),
+        }
+        health = {
+            "archived": repo_data.get("archived"),
+            "disabled": repo_data.get("disabled"),
+            "has_issues": repo_data.get("has_issues"),
+            "has_wiki": repo_data.get("has_wiki"),
+            "fork": repo_data.get("fork"),
+        }
         result = {
             "owner": owner,
             "repo": repo,
@@ -357,6 +379,10 @@ class GitHubAdapter(SourceAdapter):
             "repository": repo_data,
             "languages": languages_response.data,
             "topics": topics,
+            "releases": releases,
+            "activity_summary": activity_summary,
+            "repository_health": health,
+            "dependency_files": dependency_files,
             "recent_commits": commits_response.data if isinstance(commits_response.data, list) else [],
             "contributors_sample": [
                 {"login": item.get("login") or item.get("name"), "html_url": item.get("html_url"), "contributions": item.get("contributions"), "type": item.get("type")}
@@ -452,6 +478,26 @@ TECH_FILE_HINTS = {
     "cloudbuild.yaml": "Google Cloud Build",
     "azure-pipelines.yml": "Azure Pipelines",
 }
+
+
+def interesting_project_files(tree_items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    names = {
+        "package.json", "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
+        "requirements.txt", "pyproject.toml", "poetry.lock", "Pipfile", "Pipfile.lock",
+        "go.mod", "go.sum", "Cargo.toml", "Cargo.lock", "pom.xml", "build.gradle",
+        "Gemfile", "composer.json", "Dockerfile", "docker-compose.yml", "docker-compose.yaml",
+        "terraform.tf", "main.tf", "variables.tf", "Chart.yaml", "kustomization.yaml",
+        ".github/workflows", ".gitlab-ci.yml", "Jenkinsfile",
+    }
+    output: list[dict[str, Any]] = []
+    for item in tree_items:
+        path = item.get("path", "")
+        base = path.rsplit("/", 1)[-1]
+        if base in names or any(marker in path for marker in [".github/workflows", "k8s", "kubernetes", "helm", "terraform"]):
+            output.append({"path": path, "size": item.get("size"), "type": item.get("type")})
+        if len(output) >= 80:
+            break
+    return output
 
 
 def technology_hints(tree_items: list[dict[str, Any]]) -> list[str]:

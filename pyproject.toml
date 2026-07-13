@@ -9,7 +9,7 @@ description = "Command-line tool for first-pass cybersecurity analysis"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
-authors = [{name = "SPECTRE Contributors"}]
+authors = [{name = "SPECTRE Maintainer"}]
 keywords = ["cybersecurity", "forensics", "osint", "reconnaissance", "ctf", "cryptography", "malware-analysis"]
 classifiers = [
   "Development Status :: 3 - Alpha",

@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import re
 import urllib.error
+import urllib.parse
 import urllib.request
+from http.cookies import SimpleCookie
 from typing import Any
 
 from spectre.core.models import Category, Detection, Evidence, Finding, Severity, TargetContext
@@ -79,12 +81,15 @@ class TechnologyFingerprintPlugin(BasePlugin):
                 with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310 - analyst-provided target
                     body = response.read(300_000).decode("utf-8", errors="replace")
                     headers = {key.lower(): value for key, value in response.headers.items()}
+                    final_url = response.geturl()
+                    extras = self._collect_common_web_files(final_url, timeout)
                     return {
-                        "url": response.geturl(),
+                        "url": final_url,
                         "status": response.status,
                         "headers": headers,
                         "html_excerpt": body[:120_000],
                         "content_length_sampled": len(body),
+                        **extras,
                     }
             except (urllib.error.URLError, TimeoutError, OSError) as exc:
                 last_error = f"{url}: {exc}"
@@ -119,7 +124,21 @@ class TechnologyFingerprintPlugin(BasePlugin):
                 if pattern.search(combined):
                     technologies.setdefault(tech, set()).add(f"signature:{pattern.pattern[:60]}")
 
-        evidence = [Evidence(source="http.status", value=raw.get("status")), Evidence(source="http.url", value=raw.get("url"))]
+        web_details = self._web_details(raw)
+        evidence = [
+            Evidence(source="http.status", value=raw.get("status")),
+            Evidence(source="http.url", value=raw.get("url")),
+            Evidence(source="http.security_headers", value=web_details.get("security_headers")),
+            Evidence(source="http.cookies", value=web_details.get("cookies")),
+            Evidence(source="http.csp", value=web_details.get("csp")),
+            Evidence(source="html.comments", value=web_details.get("comments")),
+            Evidence(source="javascript.endpoints", value=web_details.get("js_endpoints")),
+            Evidence(source="http.interesting_parameters", value=web_details.get("interesting_parameters")),
+            Evidence(source="http.authentication_clues", value=web_details.get("authentication_clues")),
+            Evidence(source="http.robots", value=raw.get("robots_txt", {}).get("summary")),
+            Evidence(source="http.sitemap", value=raw.get("sitemap_xml", {}).get("summary")),
+            Evidence(source="http.security_txt", value=raw.get("security_txt", {}).get("summary")),
+        ]
         if server_header:
             evidence.append(Evidence(source="http.server_header", value=server_header, metadata={"interpreted_as_technology": bool(safe_server)}))
         for tech, reasons in sorted(technologies.items()):
@@ -134,9 +153,66 @@ class TechnologyFingerprintPlugin(BasePlugin):
                 confidence=0.78 if technologies else 0.5,
                 severity=Severity.INFO,
                 evidence=evidence,
-                metadata={"technologies": sorted(technologies)},
+                metadata={"technologies": sorted(technologies), "web_details": web_details},
             )
         ]
+
+    def _collect_common_web_files(self, final_url: str, timeout: float) -> dict[str, Any]:
+        parsed = urllib.parse.urlparse(final_url)
+        base = f"{parsed.scheme}://{parsed.netloc}"
+        return {
+            "robots_txt": self._fetch_small(f"{base}/robots.txt", timeout, "robots"),
+            "sitemap_xml": self._fetch_small(f"{base}/sitemap.xml", timeout, "sitemap"),
+            "security_txt": self._fetch_small(f"{base}/.well-known/security.txt", timeout, "security.txt"),
+        }
+
+    @staticmethod
+    def _fetch_small(url: str, timeout: float, kind: str) -> dict[str, Any]:
+        try:
+            request = urllib.request.Request(url, headers={"User-Agent": "SPECTRE/0.1"})
+            with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310 - target-controlled public URL
+                text = response.read(80_000).decode("utf-8", errors="replace")
+            lines = [line.strip() for line in text.splitlines() if line.strip() and not line.lstrip().startswith("#")]
+            interesting = [line for line in lines if any(token in line.lower() for token in ["admin", "api", "login", "private", "backup", "dev", "test", "disallow", "allow", "sitemap", "contact", "policy"])]
+            return {"url": url, "status": response.status, "present": True, "summary": {"kind": kind, "lines": len(lines), "interesting": interesting[:20]}, "excerpt": text[:4000]}
+        except Exception:
+            return {"url": url, "present": False, "summary": {"kind": kind, "lines": 0, "interesting": []}}
+
+    @staticmethod
+    def _web_details(raw: dict[str, Any]) -> dict[str, Any]:
+        headers = raw.get("headers", {})
+        html = raw.get("html_excerpt", "")
+        comments = re.findall(r"<!--(.*?)-->", html, flags=re.S)[:20]
+        js_endpoints = sorted(set(re.findall(r"[\"']((?:/[A-Za-z0-9_./{}:-]+){1,}(?:\?[A-Za-z0-9_=&{}.-]+)?)['\"]", html)))[:80]
+        parameters = sorted(set(re.findall(r"[?&]([A-Za-z0-9_]{2,40})=", html)))[:80]
+        auth_clues = sorted(set(re.findall(r"(?i)\b(login|logout|auth|oauth|saml|jwt|token|session|password|signin|signup)\b", html)))[:30]
+        security_headers = {
+            "content-security-policy": bool(headers.get("content-security-policy")),
+            "strict-transport-security": bool(headers.get("strict-transport-security")),
+            "x-frame-options": bool(headers.get("x-frame-options")),
+            "x-content-type-options": bool(headers.get("x-content-type-options")),
+            "referrer-policy": bool(headers.get("referrer-policy")),
+            "permissions-policy": bool(headers.get("permissions-policy")),
+        }
+        cookie_headers = [value for key, value in headers.items() if key.lower() == "set-cookie"]
+        cookies = []
+        for header in cookie_headers:
+            jar = SimpleCookie()
+            try:
+                jar.load(header)
+                for name, morsel in jar.items():
+                    cookies.append({"name": name, "secure": bool(morsel["secure"]), "httponly": bool(morsel["httponly"]), "samesite": morsel["samesite"] or ""})
+            except Exception:
+                continue
+        return {
+            "security_headers": security_headers,
+            "cookies": cookies,
+            "csp": headers.get("content-security-policy", "")[:500],
+            "comments": [comment.strip()[:200] for comment in comments if comment.strip()],
+            "js_endpoints": js_endpoints,
+            "interesting_parameters": parameters,
+            "authentication_clues": auth_clues,
+        }
 
     @staticmethod
     def _safe_server_technology(value: str) -> str:

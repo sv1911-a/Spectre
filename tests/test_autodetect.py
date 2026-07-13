@@ -41,6 +41,12 @@ class AutoDetectTests(unittest.TestCase):
         alternative_types = {item["target_type"] for item in plan.alternatives}
         self.assertIn("rot13_text", alternative_types)
 
+    def test_base32_like_text_prefers_crypto(self):
+        plan = plan_analysis("JBSWY3DP")
+        self.assertEqual(plan.target_type, "encoded_or_ciphertext")
+        alternative_types = {item["target_type"] for item in plan.alternatives}
+        self.assertIn("username", alternative_types)
+
 
 if __name__ == "__main__":
     unittest.main()

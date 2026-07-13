@@ -114,6 +114,19 @@ def build_summary(report: InvestigationReport) -> dict[str, Any]:
             add("Server", server or "Unknown/hidden")
             if tech.get("status"):
                 add("HTTP", tech.get("status"))
+            details = _web_details_from_findings(findings)
+            if details:
+                sec = details.get("security_headers", {})
+                if sec:
+                    present = sum(1 for value in sec.values() if value)
+                    add("Security headers", f"{present}/{len(sec)} present")
+                if details.get("js_endpoints"):
+                    add("JavaScript endpoints", len(details.get("js_endpoints", [])))
+                    interesting("JavaScript endpoints were found")
+                if details.get("authentication_clues"):
+                    add("Auth clues", ", ".join(details.get("authentication_clues", [])[:8]))
+                if details.get("comments"):
+                    interesting("HTML comments were found")
 
         crtsh = raws.get("crtsh_lookup") or (raws.get("technical_intelligence", {}).get("sources", {}) or {}).get("crtsh", {})
         if crtsh:
@@ -122,6 +135,22 @@ def build_summary(report: InvestigationReport) -> dict[str, Any]:
             add("Certificate Transparency", f"{sub_count} names, {cert_count} certificates")
             if sub_count:
                 interesting("Certificate Transparency returned subdomain leads")
+
+        repo_raw = raws.get("github_repo_analysis")
+        if repo_raw:
+            repo_data = repo_raw.get("repository", {})
+            add("Repository", repo_data.get("full_name"))
+            add("Default branch", repo_data.get("default_branch"))
+            add("Stars", repo_data.get("stargazers_count"))
+            add("Last push", repo_data.get("pushed_at"))
+            if repo_raw.get("technology_hints"):
+                add("Project hints", ", ".join(repo_raw.get("technology_hints", [])[:8]))
+            if repo_raw.get("dependency_files"):
+                add("Interesting files", len(repo_raw.get("dependency_files", [])))
+            if repo_raw.get("potential_secret_findings"):
+                interesting("Possible secret indicators found in repository")
+            if repo_raw.get("releases"):
+                interesting("Repository publishes releases")
 
         if target.startswith("https://"):
             interesting("Public HTTPS endpoint")
@@ -137,10 +166,30 @@ def build_summary(report: InvestigationReport) -> dict[str, Any]:
         if raw.get("hashes", {}).get("sha256"):
             add("SHA256", raw["hashes"]["sha256"])
         add("Strings", len(raw.get("strings", [])))
+        iocs = raw.get("iocs", {})
+        if iocs:
+            counts = ", ".join(f"{key}: {len(value)}" for key, value in sorted(iocs.items()) if value)
+            add("Extracted indicators", counts)
+        if raw.get("language_hints"):
+            add("Language/type hints", ", ".join(raw.get("language_hints", [])))
+        binary_info = raw.get("binary_info", {})
+        if binary_info:
+            add("Binary", f"{binary_info.get('format')} {binary_info.get('architecture', '')}".strip())
+            if binary_info.get("protections"):
+                protections = ", ".join(f"{k}: {v}" for k, v in binary_info["protections"].items() if v is not None)
+                add("Protections", protections)
         if raw.get("extension_matches_signature") is False:
             interesting("File extension does not match detected signature")
         if signatures and signatures[0].get("artifact_type") == "binary":
             interesting("Executable/binary file detected")
+        if raw.get("embedded_archives"):
+            interesting("Embedded archive signature found")
+        if raw.get("embedded_executables"):
+            interesting("Embedded executable signature found")
+        if raw.get("potential_secrets"):
+            interesting("Possible secret or token found")
+        if raw.get("suspicious_patterns"):
+            interesting("Suspicious string patterns found")
 
     elif report.category == Category.CRYPTO:
         best = None
@@ -150,7 +199,6 @@ def build_summary(report: InvestigationReport) -> dict[str, Any]:
         if best:
             add("Best result", best.get("value"))
             add("Decode path", " -> ".join(best.get("path", [])) or "none")
-            add("Confidence", f"{round(best.get('confidence', 0) * 100, 1)}%")
             interesting("Decoded candidate found")
         for result in report.results:
             if result.plugin == "hash_identifier":
@@ -184,7 +232,7 @@ def build_summary(report: InvestigationReport) -> dict[str, Any]:
         if result.errors:
             interesting(f"{result.plugin} reported an error")
         for finding in result.findings:
-            if finding.severity.value in {"medium", "high"}:
+            if finding.severity.value in {"medium", "high"} and finding.title not in {"Native file triage"}:
                 interesting(finding.title)
 
     return summary
@@ -209,6 +257,13 @@ def _technologies_from_findings(findings) -> list[str]:
         if values:
             techs.extend(str(value) for value in values)
     return sorted(dict.fromkeys(techs))
+
+
+def _web_details_from_findings(findings) -> dict[str, Any]:
+    for finding in findings:
+        if isinstance(finding.metadata, dict) and finding.metadata.get("web_details"):
+            return finding.metadata["web_details"]
+    return {}
 
 
 def _safe_server_header(value: str) -> str | None:

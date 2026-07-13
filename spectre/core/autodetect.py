@@ -150,6 +150,8 @@ def _encoded_score(value: str) -> float | None:
         return None
     if _HEXISH_RE.fullmatch(value) and len(re.sub(r"[^0-9A-Fa-f]", "", value)) % 2 == 0:
         return 0.82
+    if len(compact) >= 8 and re.fullmatch(r"[A-Z2-7]+=*", compact):
+        return 0.78
     if len(compact) % 4 in {0, 2, 3} and _BASE64ISH_RE.fullmatch(value):
         if any(ch in value for ch in "=+/ _-"):
             return 0.8

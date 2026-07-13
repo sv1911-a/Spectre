@@ -16,6 +16,12 @@ class SmartCryptoEngineTests(unittest.TestCase):
         self.assertEqual(best["value"], "Hello")
         self.assertEqual(best["path"], ["hex_decoder", "base64_decoder"])
 
+    def test_base32_decode(self):
+        report = SmartCryptoEngine().run("JBSWY3DP")
+        best = report.results[0].raw["best"]
+        self.assertEqual(best["value"], "Hello")
+        self.assertEqual(best["path"], ["base32_decoder"])
+
 
 if __name__ == "__main__":
     unittest.main()

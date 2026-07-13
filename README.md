@@ -210,8 +210,12 @@ Spectre currently supports:
 - file hashes
 - entropy
 - string extraction
+- URL, domain, email, IP, hash, JWT, API key, and token extraction
+- embedded file signature checks
+- possible secret checks
+- basic binary triage hints
 - hash identification
-- Base64, hex, URL, ROT13, and XOR-style decoding
+- Base64, Base32, Base58, Base85, hex, URL, ROT13, Caesar-style, JWT, compressed blob, and XOR-style decoding
 - DNS lookup
 - WHOIS lookup
 - RDAP lookup
@@ -220,6 +224,7 @@ Spectre currently supports:
 - ASN lookup
 - TLS certificate lookup
 - Certificate Transparency lookup
+- web checks for headers, cookies, security headers, robots.txt, sitemap.xml, security.txt, comments, endpoints, and parameters
 - GitHub user, organization, repository, and search checks
 - Wayback Machine lookup
 

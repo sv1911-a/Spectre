@@ -76,17 +76,23 @@ class TerminalReporter(Reporter):
         if isinstance(plan, dict):
             detected = plan.get("target_type", "unknown")
             confidence = plan.get("confidence")
-            conf_text = f" ({round(float(confidence) * 100)}%)" if isinstance(confidence, int | float) else ""
-            lines.append(f"Detected: {detected}{conf_text}")
+            if verbose and isinstance(confidence, int | float):
+                lines.append(f"Detected: {detected} ({round(float(confidence) * 100)}%)")
+            else:
+                lines.append("Detected:")
+                lines.append(f"  {detected}")
             alternatives = plan.get("alternatives") or []
             if alternatives:
-                lines.append("Other possibilities:")
+                lines.append("Other possible interpretations:")
                 for alt in alternatives[:3]:
-                    try:
-                        pct = round(float(alt.get("confidence", 0)) * 100)
-                    except Exception:
-                        pct = 0
-                    lines.append(f"  - {alt.get('target_type', 'unknown')} ({pct}%)")
+                    if verbose:
+                        try:
+                            pct = round(float(alt.get("confidence", 0)) * 100)
+                            lines.append(f"  - {alt.get('target_type', 'unknown')} ({pct}%)")
+                        except Exception:
+                            lines.append(f"  - {alt.get('target_type', 'unknown')}")
+                    else:
+                        lines.append(f"  - {alt.get('target_type', 'unknown')}")
 
         if not report.results:
             lines.append(report.metadata.get("message", "No results."))
@@ -130,9 +136,12 @@ class TerminalReporter(Reporter):
                 lines.append(f"- Some checks failed in {result.plugin}. Re-run with --verbose for details.")
             for finding in result.findings:
                 shown += 1
-                conf = round(finding.confidence * 100)
                 prefix = "  -" if verbose else "-"
-                lines.append(f"{prefix} {finding.title} ({conf}%)")
+                if verbose:
+                    conf = round(finding.confidence * 100)
+                    lines.append(f"{prefix} {finding.title} ({conf}%)")
+                else:
+                    lines.append(f"{prefix} {finding.title}")
                 lines.append(f"  {finding.description}")
                 if verbose:
                     for evidence in finding.evidence:
