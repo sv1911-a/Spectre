@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "spectre-cyber"
-version = "0.1.0"
+version = "0.1.3"
 description = "Command-line tool for first-pass cybersecurity analysis"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -26,10 +26,10 @@ dns = ["dnspython>=2.6"]
 dev = []
 
 [project.urls]
-Homepage = "https://github.com/your-username/spectre"
-Documentation = "https://github.com/your-username/spectre/tree/main/docs"
-Issues = "https://github.com/your-username/spectre/issues"
-Source = "https://github.com/your-username/spectre"
+Homepage = "https://github.com/sv1911-a/Spectre"
+Documentation = "https://github.com/sv1911-a/Spectre/tree/main/docs"
+Issues = "https://github.com/sv1911-a/Spectre/issues"
+Source = "https://github.com/sv1911-a/Spectre"
 
 [project.scripts]
 spectre = "spectre.cli:main"
